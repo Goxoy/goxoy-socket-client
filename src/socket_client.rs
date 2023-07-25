@@ -61,22 +61,34 @@ impl SocketClient {
         return true;
     }
     pub fn send_to(&mut self){
-        let mut stream=self.stream.as_mut().unwrap().try_clone().unwrap();
-        let msg = b"test_text";
-        stream.write(msg).unwrap();
-        let mut data = [0 as u8; 9];
-        match stream.read_exact(&mut data) {
-            Ok(_) => {
-                if &data == msg {
-                    println!("Reply is ok!");
-                } else {
-                    let text = from_utf8(&data).unwrap();
-                    println!("Unexpected reply: {}", text);
+        let stream=self.stream.as_mut().unwrap().try_clone();
+        if stream.is_ok(){
+            let mut stream=stream.unwrap();
+            let msg = b"test_text";
+            let write_result=stream.write(msg);
+            if write_result.is_ok(){
+                let write_result=write_result.unwrap();
+                dbg!(write_result);
+                let mut data = [0 as u8; 9];
+                match stream.read_exact(&mut data) {
+                    Ok(income) => {
+                        dbg!(income);
+                        if &data == msg {
+                            println!("Reply is ok!");
+                        } else {
+                            let text = from_utf8(&data).unwrap();
+                            println!("Unexpected reply: {}", text);
+                        }
+                    },
+                    Err(e) => {
+                        println!("Failed to receive data: {}", e);
+                    }
                 }
-            },
-            Err(e) => {
-                println!("Failed to receive data: {}", e);
+            }else{
+                println!("write error");
             }
+        }else{
+            println!("stream error");
         }
     }
     pub fn close_connection(&mut self){
@@ -86,6 +98,36 @@ impl SocketClient {
 
 #[test]
 fn full_test() {
+    if let Ok(mut stream) = TcpStream::connect("127.0.0.1:1234") {
+        println!("Connected to the server!");
+        let msg = b"Hello!";
+        for i in 1..5 {            
+            stream.write(msg).unwrap();
+            println!("Sent Hello, awaiting reply...");
+
+            let mut data = [0 as u8; 6]; // using 6 byte buffer
+            match stream.read_exact(&mut data) {
+                Ok(_) => {
+                    if &data == msg {
+                        println!("Reply is ok!");
+                    } else {
+                        let text = from_utf8(&data).unwrap();
+                        println!("Unexpected reply: {}", text);
+                    }
+                },
+                Err(e) => {
+                    println!("Failed to receive data: {}", e);
+                }
+            } 
+            std::thread::sleep(std::time::Duration::from_millis(1000));
+        }
+    } else {
+        println!("Couldn't connect to server...");
+    }
+    loop  {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    
     // cargo test  --lib full_test -- --nocapture
     let mut client_obj = SocketClient::new();
     client_obj.start_with_config(AddressParser { 
@@ -100,6 +142,13 @@ fn full_test() {
         let vec_to_string = String::from_utf8(data).unwrap(); // Converting to string
         println!("vec_to_string: {}", vec_to_string); // Output: Hello World
     });
-    client_obj.start();
+    if client_obj.start(){
+        println!("started");
+        client_obj.send_to();
+        println!("sended");
+    }else{
+        println!("started error");
+    }
+    std::thread::sleep(std::time::Duration::from_millis(10000));
     assert!(true)
 }
