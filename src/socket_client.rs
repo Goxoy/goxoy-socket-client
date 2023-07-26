@@ -48,20 +48,20 @@ impl SocketClient {
     pub fn debug_mode(&mut self, debug: bool) {
         self.debug = debug;
     }
-    pub fn start_with_config(&mut self, config: AddressParser) -> bool {
+    pub fn connect_with_config(&mut self, config: AddressParser) -> bool {
         let local_addr = AddressParser::object_to_string(config);
         self.local_addr = local_addr;
         self.defined = true;
-        self.start_sub_fn()
+        self.connect_sub_fn()
     }
-    pub fn start(&mut self) -> bool {
+    pub fn connect(&mut self) -> bool {
         if self.defined == false {
             false
         } else {
-            self.start_sub_fn()
+            self.connect_sub_fn()
         }
     }
-    fn start_sub_fn(&mut self) -> bool {
+    fn connect_sub_fn(&mut self) -> bool {
         let addr_obj = AddressParser::string_to_object(self.local_addr.clone());
         let mut local_addr = String::from(addr_obj.ip_address);
         local_addr.push_str(":");
@@ -73,35 +73,74 @@ impl SocketClient {
         self.stream = Some(tcp_stream.unwrap());
         return true;
     }
-    pub fn send_to(&mut self) -> bool {
+    pub fn listen(&mut self) {
+        loop {
+            let stream = self.stream.as_mut().unwrap().try_clone();
+            if stream.is_ok() {
+                let mut stream = stream.unwrap();
+                let mut data = [0 as u8; 1024];
+                match stream.read(&mut data) {
+                    Ok(_income) => {
+                        self.debug_string(format!("reply: {}", from_utf8(&data).unwrap()));
+                        if self.callback.is_some() {
+                            let callback_obj = self.callback.unwrap();
+                            callback_obj(data.to_vec());
+                        } else {
+                            self.debug_str("callback undefined");
+                        }
+
+                        let text = from_utf8(&data);
+                        if text.is_ok() {
+                            self.debug_string(format!("listen text: {}", text.unwrap()));
+                        } else {
+                            self.debug_string(format!("listen data: {:?}", data));
+                        }
+                    }
+                    Err(e) => {
+                        self.debug_string(format!("failed to listen data: {}", e));
+                    }
+                }
+            } else {
+                self.debug_str("tcp stream error");
+            }
+        }
+    }
+    pub fn send(&mut self, data: Vec<u8>) -> bool {
         let stream = self.stream.as_mut().unwrap().try_clone();
         if stream.is_ok() {
             let mut stream = stream.unwrap();
-            let msg = b"test_text";
-            let write_result = stream.write(msg);
+            let write_result = stream.write(data.as_slice());
             if write_result.is_ok() {
+                self.debug_str("message sended!");
                 let _write_result = write_result.unwrap();
-                let mut data = [0 as u8; 9];
-                match stream.read_exact(&mut data) {
-                    Ok(income) => {
-                        dbg!(income);
-                        if &data == msg {
-                            self.debug_str("Reply is ok!");
+                let mut data = [0 as u8; 1024];
+                match stream.read(&mut data) {
+                    Ok(_income) => {
+                        self.debug_string(format!("reply: {}", from_utf8(&data).unwrap()));
+                        if self.callback.is_some() {
+                            let callback_obj = self.callback.unwrap();
+                            callback_obj(data.to_vec());
                         } else {
-                            let text = from_utf8(&data).unwrap();
-                            self.debug_string(format!("Unexpected reply: {}", text));
+                            self.debug_str("callback undefined");
+                        }
+
+                        let text = from_utf8(&data);
+                        if text.is_ok() {
+                            self.debug_string(format!("reply text: {}", text.unwrap()));
+                        } else {
+                            self.debug_string(format!("reply data: {:?}", data));
                         }
                         return true;
                     }
                     Err(e) => {
-                        self.debug_string(format!("Failed to receive data: {}", e));
+                        self.debug_string(format!("failed to receive data: {}", e));
                     }
                 }
             } else {
-                self.debug_str("write error");
+                self.debug_str("message sending error");
             }
         } else {
-            self.debug_str("stream error");
+            self.debug_str("tcp stream error");
         }
         return false;
     }
@@ -113,33 +152,21 @@ impl SocketClient {
 #[test]
 fn full_test() {
     // cargo test  --lib full_test -- --nocapture
-    if let Ok(mut stream) = TcpStream::connect("127.0.0.1:1234") {
-        println!("Connected to the server!");
-        let msg = b"Hello!";
-        for _i in 1..5 {
-            stream.write(msg).unwrap();
-            println!("Sent Hello, awaiting reply...");
-
-            let mut data = [0 as u8; 6]; // using 6 byte buffer
-            match stream.read_exact(&mut data) {
-                Ok(_) => {
-                    if &data == msg {
-                        println!("Reply is ok!");
-                    } else {
-                        let text = from_utf8(&data).unwrap();
-                        println!("Unexpected reply: {}", text);
-                    }
-                }
-                Err(e) => {
-                    println!("Failed to receive data: {}", e);
-                }
-            }
-            std::thread::sleep(std::time::Duration::from_millis(1000));
-        }
-        std::thread::sleep(std::time::Duration::from_millis(5000));
-        assert!(true)
-    } else {
-        println!("Couldn't connect to server...");
-        assert!(false)
-    }
+    let mut client_obj = SocketClient::new_with_config(AddressParser {
+        ip_address: "127.0.0.1".to_string(),
+        port_no: 1234,
+        protocol_type: ProtocolType::TCP,
+        ip_version: IPAddressVersion::IpV4,
+    });
+    client_obj.debug_mode(true);
+    client_obj.assign_callback(|data| {
+        let vec_to_string = String::from_utf8(data).unwrap();
+        println!("vec_to_string: {}", vec_to_string);
+    });
+    client_obj.connect();
+    let result_obj = client_obj.send("test_msg".as_bytes().to_vec());
+    println!("result_obj: {:?}", result_obj);
+    client_obj.listen();
+    client_obj.close_connection();
+    assert!(true)
 }
