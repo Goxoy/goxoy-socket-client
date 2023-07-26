@@ -2,6 +2,12 @@
 name = "goxoy-socket-client"
 version = "0.1.0"
 edition = "2021"
+authors = ["Omer GOKSOY <goksoy.omer@gmail.com>"]
+description = "Goxoy Socket Client Library"
+license = "MIT"
+keywords = ["socket-client"]
+rust-version ="1.66.1"
+repository = "https://github.com/Goxoy/goxoy-socket-client/"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
