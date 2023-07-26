@@ -40,10 +40,14 @@ impl SocketClient {
         self.callback = Some(callback);
     }
     fn debug_str(&self, str: &str) {
-        println!("{}", str);
+        if self.debug==true{
+            println!("{}", str);
+        }
     }
     fn debug_string(&self, str: String) {
-        println!("{}", str);
+        if self.debug==true{
+            println!("{}", str);
+        }
     }
     pub fn debug_mode(&mut self, debug: bool) {
         self.debug = debug;
