@@ -43,7 +43,10 @@ let result_obj = client_obj.send("test_msg".as_bytes().to_vec());
 println!("result_obj: {:?}", result_obj);
 
 // gelen mesajları dinlemek için
-client_obj.listen();
+// parametre olarak kaç mili saniye dinleyeceği belirtilmeli
+// parametre olarak 0 (sıfır) belirtilirse, sürekli dinleme yapar
+// en düşük sayı 100 milisaniye
+client_obj.listen(1500);
 
 // bağlantıyı kapatmak için
 client_obj.close_connection();

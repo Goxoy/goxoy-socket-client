@@ -2,7 +2,7 @@ use goxoy_address_parser::address_parser::*;
 use std::{
     io::{Read, Write},
     net::TcpStream,
-    str::from_utf8,
+    str::from_utf8, time::{Instant, Duration},
 };
 
 #[derive(Debug)]
@@ -73,12 +73,29 @@ impl SocketClient {
         self.stream = Some(tcp_stream.unwrap());
         return true;
     }
-    pub fn listen(&mut self) {
+    pub fn listen(&mut self,how_many_milisecond:u64) {
+        let mut new_timeout_val=0;
+        if how_many_milisecond != 0{
+            if how_many_milisecond > 100{
+                new_timeout_val = how_many_milisecond;
+            }else{
+                new_timeout_val = 100;
+            }
+        }
+        let start = Instant::now();
         loop {
+            if new_timeout_val > 0 {
+                if start.elapsed().as_millis() > how_many_milisecond as u128{
+                    break;
+                }
+            }
             let stream = self.stream.as_mut().unwrap().try_clone();
             if stream.is_ok() {
                 let mut stream = stream.unwrap();
                 let mut data = [0 as u8; 1024];
+                if new_timeout_val>0{
+                    _ = stream.set_read_timeout(Some(Duration::from_millis(new_timeout_val)));
+                }
                 match stream.read(&mut data) {
                     Ok(_income) => {
                         self.debug_string(format!("reply: {}", from_utf8(&data).unwrap()));
@@ -164,9 +181,12 @@ fn full_test() {
         println!("vec_to_string: {}", vec_to_string);
     });
     client_obj.connect();
-    let result_obj = client_obj.send("test_msg".as_bytes().to_vec());
-    println!("result_obj: {:?}", result_obj);
-    client_obj.listen();
+    for _ in 1..5{
+        let result_obj = client_obj.send("test_msg".as_bytes().to_vec());
+        println!("result_obj: {:?}", result_obj);
+        client_obj.listen(1500);
+    }
     client_obj.close_connection();
     assert!(true)
 }
+
