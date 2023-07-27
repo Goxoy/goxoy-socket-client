@@ -2,55 +2,56 @@ use goxoy_address_parser::address_parser::*;
 use std::{
     io::{Read, Write},
     net::TcpStream,
-    str::from_utf8, time::{Instant, Duration},
+    time::{Instant, Duration},
 };
 
+pub enum SocketClientErrorType{
+    Connection,
+    Communication
+}
+pub enum SocketConnectionStatus{
+    Connected,
+    Disconnected
+}
 #[derive(Debug)]
 pub struct SocketClient {
-    debug: bool,
     stream: Option<TcpStream>,
     defined: bool,
     local_addr: String,
-    callback: Option<fn(Vec<u8>)>,
+    fn_received: Option<fn(Vec<u8>)>,
+    fn_error: Option<fn(SocketClientErrorType)>,
+    fn_status: Option<fn(SocketConnectionStatus)>,
 }
 
 impl SocketClient {
     pub fn new() -> Self {
         SocketClient {
-            debug: true,
             stream: None,
             local_addr: String::new(),
             defined: false,
-            callback: None,
+            fn_error:None,
+            fn_received:None,
+            fn_status:None
         }
     }
     pub fn new_with_config(config: AddressParser) -> Self {
         SocketClient {
-            debug: true,
             stream: None,
             local_addr: AddressParser::object_to_string(config),
             defined: true,
-            callback: None,
+            fn_error:None,
+            fn_received:None,
+            fn_status:None
         }
     }
-    pub fn remove_assigned_callback(&mut self) {
-        self.callback = None;
+    pub fn on_received(&mut self, on_received_callback: fn(Vec<u8>)) {
+        self.fn_received = Some(on_received_callback);
     }
-    pub fn assign_callback(&mut self, callback: fn(Vec<u8>)) {
-        self.callback = Some(callback);
+    pub fn on_connection_status(&mut self, on_connection_status: fn(SocketConnectionStatus)) {
+        self.fn_status = Some(on_connection_status);
     }
-    fn debug_str(&self, str: &str) {
-        if self.debug==true{
-            println!("{}", str);
-        }
-    }
-    fn debug_string(&self, str: String) {
-        if self.debug==true{
-            println!("{}", str);
-        }
-    }
-    pub fn debug_mode(&mut self, debug: bool) {
-        self.debug = debug;
+    pub fn on_error(&mut self, on_error_callback: fn(SocketClientErrorType)) {
+        self.fn_error = Some(on_error_callback);
     }
     pub fn connect_with_config(&mut self, config: AddressParser) -> bool {
         let local_addr = AddressParser::object_to_string(config);
@@ -72,7 +73,15 @@ impl SocketClient {
         local_addr.push_str(&addr_obj.port_no.to_string());
         let tcp_stream = TcpStream::connect(local_addr);
         if tcp_stream.is_err() {
+            if self.fn_error.is_some() {
+                let fn_error_obj = self.fn_error.unwrap();
+                fn_error_obj(SocketClientErrorType::Connection);
+            }
             return false;
+        }
+        if self.fn_status.is_some() {
+            let fn_status_obj = self.fn_status.unwrap();
+            fn_status_obj(SocketConnectionStatus::Connected);
         }
         self.stream = Some(tcp_stream.unwrap());
         return true;
@@ -102,27 +111,19 @@ impl SocketClient {
                 }
                 match stream.read(&mut data) {
                     Ok(_income) => {
-                        self.debug_string(format!("reply: {}", from_utf8(&data).unwrap()));
-                        if self.callback.is_some() {
-                            let callback_obj = self.callback.unwrap();
-                            callback_obj(data.to_vec());
-                        } else {
-                            self.debug_str("callback undefined");
-                        }
-
-                        let text = from_utf8(&data);
-                        if text.is_ok() {
-                            self.debug_string(format!("listen text: {}", text.unwrap()));
-                        } else {
-                            self.debug_string(format!("listen data: {:?}", data));
+                        if self.fn_received.is_some() {
+                            let fn_received_obj = self.fn_received.unwrap();
+                            fn_received_obj(data.to_vec());
                         }
                     }
-                    Err(e) => {
-                        self.debug_string(format!("failed to listen data: {}", e));
+                    Err(_) => {
                     }
                 }
             } else {
-                self.debug_str("tcp stream error");
+                if self.fn_error.is_some() {
+                    let fn_error_obj = self.fn_error.unwrap();
+                    fn_error_obj(SocketClientErrorType::Communication);
+                }    
             }
         }
     }
@@ -132,41 +133,43 @@ impl SocketClient {
             let mut stream = stream.unwrap();
             let write_result = stream.write(data.as_slice());
             if write_result.is_ok() {
-                self.debug_str("message sended!");
                 let _write_result = write_result.unwrap();
                 let mut data = [0 as u8; 1024];
                 match stream.read(&mut data) {
                     Ok(_income) => {
-                        self.debug_string(format!("reply: {}", from_utf8(&data).unwrap()));
-                        if self.callback.is_some() {
-                            let callback_obj = self.callback.unwrap();
-                            callback_obj(data.to_vec());
-                        } else {
-                            self.debug_str("callback undefined");
-                        }
-
-                        let text = from_utf8(&data);
-                        if text.is_ok() {
-                            self.debug_string(format!("reply text: {}", text.unwrap()));
-                        } else {
-                            self.debug_string(format!("reply data: {:?}", data));
+                        if self.fn_received.is_some() {
+                            let fn_received_obj = self.fn_received.unwrap();
+                            fn_received_obj(data.to_vec());
                         }
                         return true;
                     }
-                    Err(e) => {
-                        self.debug_string(format!("failed to receive data: {}", e));
+                    Err(_) => {
+                        if self.fn_error.is_some() {
+                            let fn_error_obj = self.fn_error.unwrap();
+                            fn_error_obj(SocketClientErrorType::Communication);
+                        }
                     }
                 }
             } else {
-                self.debug_str("message sending error");
+                if self.fn_error.is_some() {
+                    let fn_error_obj = self.fn_error.unwrap();
+                    fn_error_obj(SocketClientErrorType::Communication);
+                }
             }
         } else {
-            self.debug_str("tcp stream error");
+            if self.fn_error.is_some() {
+                let fn_error_obj = self.fn_error.unwrap();
+                fn_error_obj(SocketClientErrorType::Communication);
+            }
         }
         return false;
     }
     pub fn close_connection(&mut self) {
         self.stream = None;
+        if self.fn_status.is_some() {
+            let fn_status_obj = self.fn_status.unwrap();
+            fn_status_obj(SocketConnectionStatus::Disconnected);
+        }
     }
 }
 
@@ -179,15 +182,37 @@ fn full_test() {
         protocol_type: ProtocolType::TCP,
         ip_version: IPAddressVersion::IpV4,
     });
-    client_obj.debug_mode(true);
-    client_obj.assign_callback(|data| {
-        let vec_to_string = String::from_utf8(data).unwrap();
-        println!("vec_to_string: {}", vec_to_string);
+    client_obj.on_received( |data| {
+        println!("Data Received : {}", String::from_utf8(data.clone()).unwrap());
+    });
+    client_obj.on_connection_status( |connection_status| {
+        match connection_status {
+            SocketConnectionStatus::Connected => {
+                println!("Socket Connected");
+            },
+            SocketConnectionStatus::Disconnected => {
+                println!("Socket Disconnected");
+            },
+        }
+    });
+    client_obj.on_error(|error_type| {
+        match error_type {
+            SocketClientErrorType::Connection => {
+                println!("Connection Error");
+            },
+            SocketClientErrorType::Communication => {
+                println!("Communication Error");
+            },
+        }
     });
     client_obj.connect();
     for _ in 1..5{
         let result_obj = client_obj.send("test_msg".as_bytes().to_vec());
-        println!("result_obj: {:?}", result_obj);
+        if result_obj==true{
+            println!("Message Sended");
+        }else{
+            println!("Message Sending Error");
+        }
         client_obj.listen(1500);
     }
     client_obj.close_connection();

@@ -35,12 +35,42 @@ client_obj.assign_callback(|data| {
 // ayarları nesneyi oluştururken belirttiyseniz.
 client_obj.connect();
 
-// işlem ve hata durumlarını ekranda yazdırmak için
-client_obj.debug_mode(true);
+//mesaj gelince devreye girecek fonksiyon
+client_obj.on_received( |data| {
+    println!("Data Received : {}", String::from_utf8(data.clone()).unwrap());
+});
+
+// sunucu bağlantı durumları tetiklendiğinde
+client_obj.on_connection_status( |connection_status| {
+    match connection_status {
+        SocketConnectionStatus::Connected => {
+            println!("Socket Connected");
+        },
+        SocketConnectionStatus::Disconnected => {
+            println!("Socket Disconnected");
+        },
+    }
+});
+
+// hata oluştuğunda devreye girecek fonksiyon
+client_obj.on_error(|error_type| {
+    match error_type {
+        SocketClientErrorType::Connection => {
+            println!("Connection Error");
+        },
+        SocketClientErrorType::Communication => {
+            println!("Communication Error");
+        },
+    }
+});
 
 // mesaj göndermek için
 let result_obj = client_obj.send("test_msg".as_bytes().to_vec());
-println!("result_obj: {:?}", result_obj);
+if result_obj==true {
+    println!("Message Sended");
+}else{
+    println!("Message Sending Error");
+}
 
 // gelen mesajları dinlemek için
 // parametre olarak kaç mili saniye dinleyeceği belirtilmeli
