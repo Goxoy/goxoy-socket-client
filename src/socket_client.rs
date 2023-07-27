@@ -205,17 +205,20 @@ fn full_test() {
             },
         }
     });
-    client_obj.connect();
-    for _ in 1..5{
-        let result_obj = client_obj.send("test_msg".as_bytes().to_vec());
-        if result_obj==true{
-            println!("Message Sended");
-        }else{
-            println!("Message Sending Error");
+    if client_obj.connect(){
+        for _ in 1..5{
+            let result_obj = client_obj.send("test_msg".as_bytes().to_vec());
+            if result_obj==true{
+                println!("Message Sended");
+            }else{
+                println!("Message Sending Error");
+            }
+            client_obj.listen(1500);
         }
-        client_obj.listen(1500);
+        client_obj.close_connection();
+    }else{
+        println!("Not Connected To Server");
     }
-    client_obj.close_connection();
     assert!(true)
 }
 
