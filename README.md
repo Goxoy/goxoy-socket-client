@@ -26,15 +26,6 @@ let mut client_obj = SocketClient::new_with_config(AddressParser {
     ip_version: IPAddressVersion::IpV4,
 });
 
-//geri gelen değerleri bu fonksiyon ile alabilirsiniz.
-client_obj.assign_callback(|data| {
-    let vec_to_string = String::from_utf8(data).unwrap();
-    println!("vec_to_string: {}", vec_to_string);
-});
-
-// ayarları nesneyi oluştururken belirttiyseniz.
-client_obj.connect();
-
 //mesaj gelince devreye girecek fonksiyon
 client_obj.on_received( |data| {
     println!("Data Received : {}", String::from_utf8(data.clone()).unwrap());
@@ -63,6 +54,9 @@ client_obj.on_error(|error_type| {
         },
     }
 });
+
+// ayarları nesneyi oluştururken belirttiyseniz, doğrudan bağlantı kurabilirsiniz.
+client_obj.connect();
 
 // mesaj göndermek için
 let result_obj = client_obj.send("test_msg".as_bytes().to_vec());
