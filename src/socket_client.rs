@@ -1,9 +1,5 @@
 use goxoy_address_parser::address_parser::*;
-use std::{
-    io::{Read, Write},
-    net::TcpStream,
-    time::{Instant, Duration},
-};
+use std::{ io::{Read, Write}, net::TcpStream, time::{Instant, Duration}};
 
 pub enum SocketClientErrorType{
     Connection,
@@ -205,15 +201,33 @@ fn full_test() {
             },
         }
     });
+    let mut since_the_epoch = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).expect("Time went backwards").as_secs();
+    loop{
+        if since_the_epoch >= 1_000_000{
+            since_the_epoch = since_the_epoch / 2;
+        }else{
+            break;
+        }
+    }
+
     if client_obj.connect(){
-        for _ in 1..5{
-            let result_obj = client_obj.send("test_msg".as_bytes().to_vec());
+        let client_id_str=format!("{:0>8}", since_the_epoch.to_string());
+        println!("CTRL+C to Exit");
+        let mut test_data=String::from("message from => ");
+        test_data.push_str(&client_id_str);
+        let mut count=1;
+        loop{
+            let result_obj = client_obj.send(test_data.as_bytes().to_vec());
             if result_obj==true{
                 println!("Message Sended");
             }else{
                 println!("Message Sending Error");
             }
             client_obj.listen(1500);
+            count = count+1;
+            if count > 1_000{
+                break;
+            }
         }
         client_obj.close_connection();
     }else{
