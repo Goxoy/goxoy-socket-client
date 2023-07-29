@@ -2,8 +2,7 @@ use goxoy_address_parser::address_parser::*;
 use std::{
     io::{Read, Write},
     net::TcpStream,
-    sync::{Arc, Mutex},
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant},
 };
 
 pub enum SocketClientErrorType {
@@ -128,45 +127,6 @@ impl SocketClient {
         }
     }
     pub fn send(&mut self, data: Vec<u8>) -> bool {
-        let stream_cloned = Arc::new(Mutex::new(self.stream));
-        let stream = stream_cloned.try_lock();
-        if stream.is_ok() {
-            let mut stream = stream.unwrap();
-            let write_result = stream.write(data.as_slice());
-            if write_result.is_ok() {
-                let _write_result = write_result.unwrap();
-                let mut data = [0 as u8; 1024];
-                match stream.read(&mut data) {
-                    Ok(_income) => {
-                        if self.fn_received.is_some() {
-                            let fn_received_obj = self.fn_received.unwrap();
-                            fn_received_obj(data.to_vec());
-                        }
-                        return true;
-                    }
-                    Err(_) => {
-                        if self.fn_error.is_some() {
-                            let fn_error_obj = self.fn_error.unwrap();
-                            fn_error_obj(SocketClientErrorType::Communication);
-                        }
-                    }
-                }
-            } else {
-                if self.fn_error.is_some() {
-                    let fn_error_obj = self.fn_error.unwrap();
-                    fn_error_obj(SocketClientErrorType::Communication);
-                }
-            }
-        } else {
-            if self.fn_error.is_some() {
-                let fn_error_obj = self.fn_error.unwrap();
-                fn_error_obj(SocketClientErrorType::Communication);
-            }
-        }
-        return false;
-    }
-
-    pub fn send_backup(&mut self, data: Vec<u8>) -> bool {
         let stream = self.stream.as_mut().unwrap().try_clone();
         if stream.is_ok() {
             let mut stream = stream.unwrap();
@@ -283,9 +243,10 @@ fn full_test() {
             println!("Communication Error");
         }
     });
-    dbg!(std::time::SystemTime::now());
-    let mut since_the_epoch = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
+    //dbg!(std::time::SystemTime::now());
+    
+    let mut since_the_epoch = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .subsec_nanos();
     loop {
