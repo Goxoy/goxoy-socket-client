@@ -1,13 +1,17 @@
 use goxoy_address_parser::address_parser::*;
-use std::{ io::{Read, Write}, net::TcpStream, time::{Instant, Duration, UNIX_EPOCH, SystemTime}};
+use std::{
+    io::{Read, Write},
+    net::TcpStream,
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+};
 
-pub enum SocketClientErrorType{
+pub enum SocketClientErrorType {
     Connection,
-    Communication
+    Communication,
 }
-pub enum SocketConnectionStatus{
+pub enum SocketConnectionStatus {
     Connected,
-    Disconnected
+    Disconnected,
 }
 #[derive(Debug)]
 pub struct SocketClient {
@@ -25,9 +29,9 @@ impl SocketClient {
             stream: None,
             local_addr: String::new(),
             defined: false,
-            fn_error:None,
-            fn_received:None,
-            fn_status:None
+            fn_error: None,
+            fn_received: None,
+            fn_status: None,
         }
     }
     pub fn new_with_config(config: AddressParser) -> Self {
@@ -35,9 +39,9 @@ impl SocketClient {
             stream: None,
             local_addr: AddressParser::object_to_string(config),
             defined: true,
-            fn_error:None,
-            fn_received:None,
-            fn_status:None
+            fn_error: None,
+            fn_received: None,
+            fn_status: None,
         }
     }
     pub fn on_received(&mut self, on_received_callback: fn(Vec<u8>)) {
@@ -82,19 +86,19 @@ impl SocketClient {
         self.stream = Some(tcp_stream.unwrap());
         return true;
     }
-    pub fn listen(&mut self,how_many_milisecond:u64) {
-        let mut new_timeout_val=0;
-        if how_many_milisecond != 0{
-            if how_many_milisecond > 100{
+    pub fn listen(&mut self, how_many_milisecond: u64) {
+        let mut new_timeout_val = 0;
+        if how_many_milisecond != 0 {
+            if how_many_milisecond > 100 {
                 new_timeout_val = how_many_milisecond;
-            }else{
+            } else {
                 new_timeout_val = 100;
             }
         }
         let start = Instant::now();
         loop {
             if new_timeout_val > 0 {
-                if start.elapsed().as_millis() > how_many_milisecond as u128{
+                if start.elapsed().as_millis() > how_many_milisecond as u128 {
                     break;
                 }
             }
@@ -102,7 +106,7 @@ impl SocketClient {
             if stream.is_ok() {
                 let mut stream = stream.unwrap();
                 let mut data = [0 as u8; 1024];
-                if new_timeout_val>0{
+                if new_timeout_val > 0 {
                     _ = stream.set_read_timeout(Some(Duration::from_millis(new_timeout_val)));
                 }
                 match stream.read(&mut data) {
@@ -112,14 +116,13 @@ impl SocketClient {
                             fn_received_obj(data.to_vec());
                         }
                     }
-                    Err(_) => {
-                    }
+                    Err(_) => {}
                 }
             } else {
                 if self.fn_error.is_some() {
                     let fn_error_obj = self.fn_error.unwrap();
                     fn_error_obj(SocketClientErrorType::Communication);
-                }    
+                }
             }
         }
     }
@@ -178,61 +181,62 @@ fn full_test() {
         protocol_type: ProtocolType::TCP,
         ip_version: IPAddressVersion::IpV4,
     });
-    client_obj.on_received( |data| {
-        println!("Data Received : {}", String::from_utf8(data.clone()).unwrap());
+    client_obj.on_received(|data| {
+        println!(
+            "Data Received : {}",
+            String::from_utf8(data.clone()).unwrap()
+        );
     });
-    client_obj.on_connection_status( |connection_status| {
-        match connection_status {
-            SocketConnectionStatus::Connected => {
-                println!("Socket Connected");
-            },
-            SocketConnectionStatus::Disconnected => {
-                println!("Socket Disconnected");
-            },
+    client_obj.on_connection_status(|connection_status| match connection_status {
+        SocketConnectionStatus::Connected => {
+            println!("Socket Connected");
+        }
+        SocketConnectionStatus::Disconnected => {
+            println!("Socket Disconnected");
         }
     });
-    client_obj.on_error(|error_type| {
-        match error_type {
-            SocketClientErrorType::Connection => {
-                println!("Connection Error");
-            },
-            SocketClientErrorType::Communication => {
-                println!("Communication Error");
-            },
+    client_obj.on_error(|error_type| match error_type {
+        SocketClientErrorType::Connection => {
+            println!("Connection Error");
+        }
+        SocketClientErrorType::Communication => {
+            println!("Communication Error");
         }
     });
     dbg!(std::time::SystemTime::now());
-    let mut since_the_epoch = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().subsec_nanos();
-    loop{
-        if since_the_epoch >= 1_048_575{
+    let mut since_the_epoch = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .subsec_nanos();
+    loop {
+        if since_the_epoch >= 1_048_575 {
             since_the_epoch = since_the_epoch / 2;
-        }else{
+        } else {
             break;
         }
     }
-    if client_obj.connect(){
-        let client_id_str=format!("{:0>5}", since_the_epoch.to_string());
+    if client_obj.connect() {
+        let client_id_str = format!("{:0>5}", since_the_epoch.to_string());
         println!("CTRL+C to Exit");
-        let mut test_data=String::from("message from => ");
+        let mut test_data = String::from("message from => ");
         test_data.push_str(&client_id_str);
-        let mut count=1;
-        loop{
+        let mut count = 1;
+        loop {
             let result_obj = client_obj.send(test_data.as_bytes().to_vec());
-            if result_obj==true{
+            if result_obj == true {
                 println!("Message Sended");
-            }else{
+            } else {
                 println!("Message Sending Error");
             }
             client_obj.listen(1500);
-            count = count+1;
-            if count > 1_000{
+            count = count + 1;
+            if count > 1_000 {
                 break;
             }
         }
         client_obj.close_connection();
-    }else{
+    } else {
         println!("Not Connected To Server");
     }
     assert!(true)
 }
-
