@@ -243,8 +243,7 @@ fn full_test() {
             println!("Communication Error");
         }
     });
-    //dbg!(std::time::SystemTime::now());
-    
+
     let mut since_the_epoch = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
