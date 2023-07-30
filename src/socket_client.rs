@@ -15,6 +15,7 @@ pub enum SocketConnectionStatus {
 }
 #[derive(Debug)]
 pub struct SocketClient {
+    auto_reconnect: bool,
     stream: Option<TcpStream>,
     defined: bool,
     local_addr: String,
@@ -26,6 +27,7 @@ pub struct SocketClient {
 impl SocketClient {
     pub fn new() -> Self {
         SocketClient {
+            auto_reconnect: true,
             stream: None,
             local_addr: String::new(),
             defined: false,
@@ -36,6 +38,7 @@ impl SocketClient {
     }
     pub fn new_with_config(config: AddressParser) -> Self {
         SocketClient {
+            auto_reconnect: true,
             stream: None,
             local_addr: AddressParser::object_to_string(config),
             defined: true,
@@ -43,6 +46,9 @@ impl SocketClient {
             fn_received: None,
             fn_status: None,
         }
+    }
+    pub fn auto_connect(&mut self, auto_connect_when_disconnect: bool) {
+        self.auto_reconnect = auto_connect_when_disconnect;
     }
     pub fn on_received(&mut self, on_received_callback: fn(Vec<u8>)) {
         self.fn_received = Some(on_received_callback);
@@ -111,9 +117,11 @@ impl SocketClient {
                 }
                 match stream.read(&mut data) {
                     Ok(_income) => {
-                        if self.fn_received.is_some() {
-                            let fn_received_obj = self.fn_received.unwrap();
-                            fn_received_obj(data.to_vec());
+                        if _income > 0 {
+                            if self.fn_received.is_some() {
+                                let fn_received_obj = self.fn_received.unwrap();
+                                fn_received_obj(data.to_vec());
+                            }
                         }
                     }
                     Err(_) => {}
@@ -123,6 +131,7 @@ impl SocketClient {
                     let fn_error_obj = self.fn_error.unwrap();
                     fn_error_obj(SocketClientErrorType::Communication);
                 }
+                break;
             }
         }
     }
@@ -133,12 +142,18 @@ impl SocketClient {
             let write_result = stream.write(data.as_slice());
             if write_result.is_ok() {
                 let _write_result = write_result.unwrap();
+                if _write_result > 0 {
+                    return true;
+                }
+                /*
                 let mut data = [0 as u8; 1024];
                 match stream.read(&mut data) {
                     Ok(_income) => {
-                        if self.fn_received.is_some() {
-                            let fn_received_obj = self.fn_received.unwrap();
-                            fn_received_obj(data.to_vec());
+                        if _income > 0 {
+                            if self.fn_received.is_some() {
+                                let fn_received_obj = self.fn_received.unwrap();
+                                fn_received_obj(data.to_vec());
+                            }
                         }
                         return true;
                     }
@@ -147,8 +162,10 @@ impl SocketClient {
                             let fn_error_obj = self.fn_error.unwrap();
                             fn_error_obj(SocketClientErrorType::Communication);
                         }
+                        return true;
                     }
                 }
+                */
             } else {
                 if self.fn_error.is_some() {
                     let fn_error_obj = self.fn_error.unwrap();
@@ -221,11 +238,14 @@ fn full_test() {
         protocol_type: ProtocolType::TCP,
         ip_version: IPAddressVersion::IpV4,
     });
+    client_obj.auto_connect(true);
     client_obj.on_received(|data| {
+        /*
         println!(
             "Data Received : {}",
             String::from_utf8(data.clone()).unwrap()
         );
+        */
     });
     client_obj.on_connection_status(|connection_status| match connection_status {
         SocketConnectionStatus::Connected => {
@@ -260,6 +280,7 @@ fn full_test() {
         println!("CTRL+C to Exit");
         let mut test_data = String::from("message from => ");
         test_data.push_str(&client_id_str);
+        println!("test_data: {}", test_data);
         let mut count = 1;
         loop {
             let result_obj = client_obj.send(test_data.as_bytes().to_vec());
