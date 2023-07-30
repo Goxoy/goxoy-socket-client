@@ -86,6 +86,15 @@ impl SocketClient {
         self.stream = Some(tcp_stream.unwrap());
         return true;
     }
+    fn trigger_error(&mut self,error_type:SocketClientErrorType,disconnect:bool){
+        if self.fn_error.is_some() {
+            let fn_error_obj = self.fn_error.unwrap();
+            fn_error_obj(error_type);
+        }
+        if disconnect==true{
+            self.close_connection();
+        }
+    }
     pub fn listen(&mut self, how_many_milisecond: u64) {
         let mut new_timeout_val = 0;
         if how_many_milisecond != 0 {
@@ -116,13 +125,13 @@ impl SocketClient {
                             fn_received_obj(data.to_vec());
                         }
                     }
-                    Err(_) => {}
+                    Err(_) => {
+                        self.trigger_error(SocketClientErrorType::Communication,true);
+                    }
                 }
             } else {
-                if self.fn_error.is_some() {
-                    let fn_error_obj = self.fn_error.unwrap();
-                    fn_error_obj(SocketClientErrorType::Communication);
-                }
+                self.trigger_error(SocketClientErrorType::Communication,true);
+                break;
             }
         }
     }
@@ -143,72 +152,19 @@ impl SocketClient {
                         return true;
                     }
                     Err(_) => {
-                        if self.fn_error.is_some() {
-                            let fn_error_obj = self.fn_error.unwrap();
-                            fn_error_obj(SocketClientErrorType::Communication);
-                        }
+                        self.trigger_error(SocketClientErrorType::Communication,false);
                     }
                 }
             } else {
-                if self.fn_error.is_some() {
-                    let fn_error_obj = self.fn_error.unwrap();
-                    fn_error_obj(SocketClientErrorType::Communication);
-                }
+                self.trigger_error(SocketClientErrorType::Communication,false);
             }
         } else {
-            if self.fn_error.is_some() {
-                let fn_error_obj = self.fn_error.unwrap();
-                fn_error_obj(SocketClientErrorType::Communication);
-            }
+            self.trigger_error(SocketClientErrorType::Communication,false);
         }
         return false;
     }
-    /*
-
-            thread::spawn(move || {
-                let stream = outer_stream_clone.unwrap();
-                let write_result = stream.write(data.as_slice());
-                if write_result.is_ok() {
-                    let _write_result = write_result.unwrap();
-                    let mut data = [0 as u8; 1024];
-                    match stream.read(&mut data) {
-                        Ok(_income) => {
-                            if received_fnc.is_some() {
-                                received_fnc.unwrap()(data.to_vec());
-                            }
-                        }
-                        Err(_) => {
-                            if error_fnc.is_some() {
-                                error_fnc.unwrap()(SocketClientErrorType::Communication);
-                            }
-                        }
-                    }
-                }
-
-                /*
-                 else {
-                    if error_fnc.is_some() {
-                        error_fnc.unwrap()(SocketClientErrorType::Communication);
-                    }
-                    if error_fnc.is_some() {
-                        let inner_error = inner_error.unwrap();
-                        inner_error(SocketClientErrorType::Communication);
-                    } else {
-                        println!("try-lock-error-3");
-                    }
-                    return true;
-                }
-                */
-            });
-
-
-    */
     pub fn close_connection(&mut self) {
         self.stream = None;
-        if self.fn_status.is_some() {
-            let fn_status_obj = self.fn_status.unwrap();
-            fn_status_obj(SocketConnectionStatus::Disconnected);
-        }
     }
 }
 
