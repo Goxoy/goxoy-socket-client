@@ -13,4 +13,3 @@ repository = "https://github.com/Goxoy/goxoy-socket-client/"
 
 [dependencies]
 goxoy-address-parser = "0.0.4"
-message-io = "0.17.0"
