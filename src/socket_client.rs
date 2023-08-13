@@ -22,7 +22,7 @@ pub struct SocketClient {
     tx:Option<Sender<Vec<u8>>>,
     max_message_size:usize,
     local_addr: String,
-    fn_received: Option<fn(Vec<u8>)>,
+    fn_received: Option<fn(String,Vec<u8>)>,
     fn_error: Option<fn(SocketClientErrorType)>,
     fn_status: Option<fn(SocketConnectionStatus)>,
 }
@@ -50,7 +50,7 @@ impl SocketClient {
             fn_status: None,
         }
     }
-    pub fn on_received(&mut self, on_received_callback: fn(Vec<u8>)) {
+    pub fn on_received(&mut self, on_received_callback: fn(String,Vec<u8>)) {
         self.fn_received = Some(on_received_callback);
     }
     pub fn on_connection_status(&mut self, on_connection_status: fn(SocketConnectionStatus)) {
@@ -76,6 +76,7 @@ impl SocketClient {
     fn connect_sub_fn(&mut self) -> bool {
         let msg_size=self.max_message_size;
         let addr_obj = AddressParser::string_to_object(self.local_addr.clone());
+        let local_addr_obj_1=addr_obj.clone();
         let mut client_obj = TcpStream::connect(AddressParser::local_addr_for_binding(addr_obj));
         if client_obj.is_err(){
             return false;
@@ -92,17 +93,28 @@ impl SocketClient {
         let fn_error_clone=self.fn_error;
         thread::spawn(move || loop {
             let mut buff = vec![0; msg_size];
-            match client.read_exact(&mut buff) {
+            match client.read(&mut buff) {
                 Ok(_) => {
+                    let peer_addr=client.peer_addr();
+                    let mut local_addr=String::from("0.0.0.0:0");
+                    if peer_addr.is_ok(){
+                        local_addr=AddressParser::binding_addr_to_string(
+                            peer_addr.unwrap().to_string(), 
+                            local_addr_obj_1.protocol_type, 
+                            local_addr_obj_1.ip_version
+                        );
+                    }
                     let msg = buff.into_iter().take_while(|&x| x != 0).collect::<Vec<_>>();
                     if fn_received_clone.is_some() {
-                        fn_received_clone.unwrap()(msg.to_vec());
+                        fn_received_clone.unwrap()(local_addr,msg.to_vec());
                     }
                 }
                 Err(ref err) if err.kind() == ErrorKind::WouldBlock => {
+                    /*
                     if fn_error_clone.is_some() {
                         fn_error_clone.unwrap()(SocketClientErrorType::Communication);
                     }
+                    */
                 },
                 Err(_) => {
                     println!("connection with server was severed");
@@ -147,10 +159,10 @@ fn full_test() {
         protocol_type: ProtocolType::TCP,
         ip_version: IPAddressVersion::IpV4,
     });
-    client_obj.on_received(|data| {
+    client_obj.on_received(|sender,income_data| {
         println!(
-            "Data Received : {}",
-            String::from_utf8(data.clone()).unwrap()
+            "Data Received from : {} => {}",
+            sender,String::from_utf8(income_data.clone()).unwrap()
         );
     });
     client_obj.on_connection_status(|connection_status| match connection_status {
@@ -187,7 +199,6 @@ fn full_test() {
         let mut test_data = String::from("message from => ");
         test_data.push_str(&client_id_str);
         client_obj.send(test_data.as_bytes().to_vec());
-        /*
         let mut count = 1;
         loop {
             let result_obj = client_obj.send(test_data.as_bytes().to_vec());
@@ -196,13 +207,13 @@ fn full_test() {
             } else {
                 println!("Message Sending Error");
             }
-            //client_obj.listen(1500);
+            //client_obj.listen(5000);
+            thread::sleep(::std::time::Duration::from_millis(30000));
             count = count + 1;
             if count > 1_000 {
                 break;
             }
         }
-        */
         //client_obj.close_connection();
     } else {
         println!("Not Connected To Server");
