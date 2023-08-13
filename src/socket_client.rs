@@ -1,9 +1,13 @@
-use goxoy_address_parser::address_parser::*;
+#![allow(warnings, unused)]
+use mpsc::TryRecvError;
 use std::{
-    io::{Read, Write},
+    io::{self, ErrorKind, Read, Write},
     net::TcpStream,
-    time::{Duration, Instant},
+    sync::mpsc::{self, Receiver, Sender},
+    thread,
+    time::{Duration,Instant},
 };
+use goxoy_address_parser::address_parser::*;
 
 pub enum SocketClientErrorType {
     Connection,
@@ -13,10 +17,10 @@ pub enum SocketConnectionStatus {
     Connected,
     Disconnected,
 }
-#[derive(Debug)]
 pub struct SocketClient {
-    stream: Option<TcpStream>,
     defined: bool,
+    tx:Option<Sender<Vec<u8>>>,
+    max_message_size:usize,
     local_addr: String,
     fn_received: Option<fn(Vec<u8>)>,
     fn_error: Option<fn(SocketClientErrorType)>,
@@ -26,9 +30,10 @@ pub struct SocketClient {
 impl SocketClient {
     pub fn new() -> Self {
         SocketClient {
-            stream: None,
-            local_addr: String::new(),
             defined: false,
+            tx:None,
+            local_addr: String::new(),
+            max_message_size:1024,
             fn_error: None,
             fn_received: None,
             fn_status: None,
@@ -36,9 +41,10 @@ impl SocketClient {
     }
     pub fn new_with_config(config: AddressParser) -> Self {
         SocketClient {
-            stream: None,
-            local_addr: AddressParser::object_to_string(config),
             defined: true,
+            tx:None,
+            local_addr: AddressParser::object_to_string(config),
+            max_message_size:1024,
             fn_error: None,
             fn_received: None,
             fn_status: None,
@@ -63,109 +69,73 @@ impl SocketClient {
         if self.defined == false {
             false
         } else {
-            self.connect_sub_fn()
+            self.connect_sub_fn();
+            return true;
         }
     }
     fn connect_sub_fn(&mut self) -> bool {
+        let msg_size=self.max_message_size;
         let addr_obj = AddressParser::string_to_object(self.local_addr.clone());
-        let mut local_addr = String::from(addr_obj.ip_address);
-        local_addr.push_str(":");
-        local_addr.push_str(&addr_obj.port_no.to_string());
-        let tcp_stream = TcpStream::connect(local_addr);
-        if tcp_stream.is_err() {
-            if self.fn_error.is_some() {
-                let fn_error_obj = self.fn_error.unwrap();
-                fn_error_obj(SocketClientErrorType::Connection);
-            }
+        let mut client_obj = TcpStream::connect(AddressParser::local_addr_for_binding(addr_obj));
+        if client_obj.is_err(){
             return false;
         }
-        if self.fn_status.is_some() {
-            let fn_status_obj = self.fn_status.unwrap();
-            fn_status_obj(SocketConnectionStatus::Connected);
-        }
-        self.stream = Some(tcp_stream.unwrap());
-        return true;
-    }
-    fn trigger_error(&mut self,error_type:SocketClientErrorType,disconnect:bool){
-        if self.fn_error.is_some() {
-            let fn_error_obj = self.fn_error.unwrap();
-            fn_error_obj(error_type);
-        }
-        if disconnect==true{
-            self.close_connection();
-        }
-    }
-    pub fn listen(&mut self, how_many_milisecond: u64) {
-        let mut new_timeout_val = 0;
-        if how_many_milisecond != 0 {
-            if how_many_milisecond > 100 {
-                new_timeout_val = how_many_milisecond;
-            } else {
-                new_timeout_val = 100;
-            }
-        }
-        let start = Instant::now();
-        loop {
-            if new_timeout_val > 0 {
-                if start.elapsed().as_millis() > how_many_milisecond as u128 {
+        
+        let mut client=client_obj.unwrap();
+        client
+            .set_nonblocking(true)
+            .expect("failed to initiate non-blocking");
+    
+        let (tx, rx) = mpsc::channel::<Vec<u8>>();
+        self.tx=Some(tx.clone());
+        let fn_received_clone=self.fn_received;
+        let fn_error_clone=self.fn_error;
+        thread::spawn(move || loop {
+            let mut buff = vec![0; msg_size];
+            match client.read_exact(&mut buff) {
+                Ok(_) => {
+                    let msg = buff.into_iter().take_while(|&x| x != 0).collect::<Vec<_>>();
+                    if fn_received_clone.is_some() {
+                        fn_received_clone.unwrap()(msg.to_vec());
+                    }
+                }
+                Err(ref err) if err.kind() == ErrorKind::WouldBlock => {
+                    if fn_error_clone.is_some() {
+                        fn_error_clone.unwrap()(SocketClientErrorType::Communication);
+                    }
+                },
+                Err(_) => {
+                    println!("connection with server was severed");
                     break;
                 }
             }
-            let stream = self.stream.as_mut().unwrap().try_clone();
-            if stream.is_ok() {
-                let mut stream = stream.unwrap();
-                let mut data = [0 as u8; 1024];
-                if new_timeout_val > 0 {
-                    _ = stream.set_read_timeout(Some(Duration::from_millis(new_timeout_val)));
+            match rx.try_recv() {
+                Ok(msg) => {
+                    client.write_all(&msg).expect("writing to socket failed");
+                    println!("message sent {:?}", msg);
                 }
-                match stream.read(&mut data) {
-                    Ok(_income) => {
-                        if self.fn_received.is_some() {
-                            let fn_received_obj = self.fn_received.unwrap();
-                            fn_received_obj(data.to_vec());
-                        }
+                Err(TryRecvError::Empty) => {
+                    
+                },
+                Err(TryRecvError::Disconnected) => {
+                    if fn_error_clone.is_some() {
+                        fn_error_clone.unwrap()(SocketClientErrorType::Connection);
                     }
-                    Err(_) => {
-                        self.trigger_error(SocketClientErrorType::Communication,true);
-                    }
-                }
-            } else {
-                self.trigger_error(SocketClientErrorType::Communication,true);
-                break;
+                },
             }
-        }
+    
+            thread::sleep(Duration::from_millis(10));
+        });        
+        return true;
     }
     pub fn send(&mut self, data: Vec<u8>) -> bool {
-        let stream = self.stream.as_mut().unwrap().try_clone();
-        if stream.is_ok() {
-            let mut stream = stream.unwrap();
-            let write_result = stream.write(data.as_slice());
-            if write_result.is_ok() {
-                let _write_result = write_result.unwrap();
-                let mut data = [0 as u8; 1024];
-                match stream.read(&mut data) {
-                    Ok(_income) => {
-                        if self.fn_received.is_some() {
-                            let fn_received_obj = self.fn_received.unwrap();
-                            fn_received_obj(data.to_vec());
-                        }
-                        return true;
-                    }
-                    Err(_) => {
-                        self.trigger_error(SocketClientErrorType::Communication,false);
-                    }
-                }
-            } else {
-                self.trigger_error(SocketClientErrorType::Communication,false);
-            }
-        } else {
-            self.trigger_error(SocketClientErrorType::Communication,false);
+        if self.tx.is_some(){
+            self.tx.as_mut().unwrap().send(data);
+            return true;
         }
         return false;
     }
-    pub fn close_connection(&mut self) {
-        self.stream = None;
-    }
+
 }
 
 #[test]
@@ -216,6 +186,8 @@ fn full_test() {
         println!("CTRL+C to Exit");
         let mut test_data = String::from("message from => ");
         test_data.push_str(&client_id_str);
+        client_obj.send(test_data.as_bytes().to_vec());
+        /*
         let mut count = 1;
         loop {
             let result_obj = client_obj.send(test_data.as_bytes().to_vec());
@@ -224,13 +196,14 @@ fn full_test() {
             } else {
                 println!("Message Sending Error");
             }
-            client_obj.listen(1500);
+            //client_obj.listen(1500);
             count = count + 1;
             if count > 1_000 {
                 break;
             }
         }
-        client_obj.close_connection();
+        */
+        //client_obj.close_connection();
     } else {
         println!("Not Connected To Server");
     }
