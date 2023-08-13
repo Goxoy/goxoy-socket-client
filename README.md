@@ -66,15 +66,6 @@ if result_obj==true {
     println!("Message Sending Error");
 }
 
-// gelen mesajları dinlemek için
-// parametre olarak kaç mili saniye dinleyeceği belirtilmeli
-// parametre olarak 0 (sıfır) belirtilirse, sürekli dinleme yapar
-// en düşük sayı 100 milisaniye
-client_obj.listen(1500);
-
-// bağlantıyı kapatmak için
-client_obj.close_connection();
-
 ```
 
   

@@ -207,14 +207,12 @@ fn full_test() {
             } else {
                 println!("Message Sending Error");
             }
-            //client_obj.listen(5000);
             thread::sleep(::std::time::Duration::from_millis(30000));
             count = count + 1;
             if count > 1_000 {
                 break;
             }
         }
-        //client_obj.close_connection();
     } else {
         println!("Not Connected To Server");
     }
