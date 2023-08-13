@@ -76,10 +76,7 @@ impl SocketClient {
     fn connect_sub_fn(&mut self) -> bool {
         let msg_size=self.max_message_size;
         let addr_obj = AddressParser::string_to_object(self.local_addr.clone());
-        let mut local_addr = String::from(addr_obj.ip_address);
-        local_addr.push_str(":");
-        local_addr.push_str(&addr_obj.port_no.to_string());
-        let mut client_obj = TcpStream::connect(local_addr);
+        let mut client_obj = TcpStream::connect(AddressParser::local_addr_for_binding(addr_obj));
         if client_obj.is_err(){
             return false;
         }
