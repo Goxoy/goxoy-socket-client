@@ -10,7 +10,7 @@ checksum = "7db048bf39087d727f8e45c7595f02236c70ec8cf9b1c34b0cac47c49b258a2a"
 
 [[package]]
 name = "goxoy-socket-client"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "goxoy-address-parser",
 ]
