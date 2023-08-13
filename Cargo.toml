@@ -1,6 +1,6 @@
 [package]
 name = "goxoy-socket-client"
-version = "0.1.8"
+version = "0.1.9"
 edition = "2021"
 authors = ["Omer GOKSOY <goksoy.omer@gmail.com>"]
 description = "Goxoy Socket Client Library"
